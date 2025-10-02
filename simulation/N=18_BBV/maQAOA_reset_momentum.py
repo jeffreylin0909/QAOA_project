@@ -33,7 +33,7 @@ def generate_case(seed=42):
         m0: int | None = None,
         w0: float = 1.0,
         delta: float = 1.0
-    ) -> Tuple[List[Tuple[int, int]], List[float], List[float], List[int]]:
+    ):
         """
         產生 BBV (Barrat–Barthelemy–Vespignani) 加權網路。
 
@@ -60,31 +60,24 @@ def generate_case(seed=42):
                 strength[i] += w0
                 strength[j] += w0
 
-        def weighted_sample_without_replacement(pop_indices: List[int], weights: List[float], k: int) -> List[int]:
-            if sum(weights) <= 0:
-                return rng.sample(pop_indices, k)
-            chosen = []
-            pool = pop_indices[:]
-            w = weights[:]
-            for _ in range(k):
-                pick = rng.choices(pool, weights=w, k=1)[0]
-                idx = pool.index(pick)
-                chosen.append(pick)
-                pool.pop(idx); w.pop(idx)
-            return chosen
-
         for new_v in range(m0, N):
-            candidates = list(range(new_v))
-            weights_s = [strength[u] for u in candidates]
-            targets = weighted_sample_without_replacement(candidates, weights_s, m)
+            chosen = set()
+            for _ in range(m):
+                # 每次都用「最新」的 strength 重新計算抽樣機率
+                candidates = [u for u in range(new_v) if u not in chosen]
+                weights_s = [strength[u] for u in candidates]
 
-            for u in targets:
+                # 抽 1 個
+                u = rng.choices(candidates, weights=weights_s, k=1)[0]
+                chosen.add(u)
+
+                # ---- 立刻做「重分配」(只對 u 的舊鄰邊；不含 new_v) ----
                 s_u_old = strength[u]
                 if s_u_old > 0 and delta > 0:
                     increments = []
                     for v, w_uv in adj[u].items():
                         inc = delta * w_uv / s_u_old
-                        if inc > 0:
+                        if inc > 0 and v != new_v:
                             increments.append((v, inc))
                     for v, inc in increments:
                         adj[u][v] += inc
@@ -92,6 +85,7 @@ def generate_case(seed=42):
                         strength[u] += inc
                         strength[v] += inc
 
+                # ---- 立刻加新邊 (new_v, u) 並更新強度 ----
                 if u not in adj[new_v]:
                     adj[new_v][u] = 0.0
                     adj[u][new_v] = 0.0
@@ -108,7 +102,7 @@ def generate_case(seed=42):
                     edges.append((u, v))
                     weights.append(w)
         return edges, weights, strength
-
+    
     edges, weights, deg_w = generate_bbv_graph(
         N=N, m=m, seed=seed, m0=None, w0=1.0, delta=1
     )
